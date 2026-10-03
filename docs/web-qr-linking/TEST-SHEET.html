@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Web QR linking: test sheet (BE-6.1)</title>
+<style>
+:root{--bg:#0a0e14;--panel:#111823;--line:#1f2b3a;--text:#d6e2f0;--dim:#8296ab;--cyan:#4fd8e8;--amber:#f2b84b;--red:#ff6b6b;--green:#5be3a1}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 "Segoe UI",system-ui,sans-serif}
+main{max-width:860px;margin:0 auto;padding:40px 20px 80px}
+h1{font-size:2rem;line-height:1.2;margin:0 0 6px;letter-spacing:-.01em}
+h1 span{color:var(--cyan)}
+h2{font-size:1.2rem;margin:42px 0 10px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+p{margin:8px 0;max-width:70ch}
+.sub{color:var(--dim)}
+code,pre{font-family:"Cascadia Code",Consolas,monospace}
+pre{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--cyan);padding:14px 16px;overflow-x:auto;font-size:.88rem;margin:10px 0;border-radius:4px}
+code{background:var(--panel);padding:1px 6px;border-radius:3px;font-size:.88em;color:var(--cyan)}
+ol{padding-left:22px}li{margin:6px 0}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:.95rem}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--dim);font-weight:600;font-size:.85rem}
+td.box{width:92px;color:var(--dim);white-space:nowrap}
+.warn{background:#1c1608;border:1px solid #5a4514;border-left:3px solid var(--amber);padding:14px 16px;border-radius:4px;margin:14px 0}
+.warn strong{color:var(--amber)}
+.warn ul{margin:8px 0 0;padding-left:20px}
+.note{color:var(--dim);font-size:.92rem}
+@media (max-width:560px){td.box{width:auto}}
+</style>
+</head>
+<body>
+<main>
+<h1>Web QR linking: <span>test sheet</span></h1>
+<p class="sub">Backend ticket BE-6.1. Takes about 15 minutes. You need a PC, an Android phone and a test account.</p>
+
+<h2>What you are testing</h2>
+<p>Web shows a QR code. A logged-in phone scans it. The backend then pushes the login to Web, with no polling. Log out and "one Web session per account" are also checked.</p>
+
+<h2>Before you start: ask Mervin for</h2>
+<ul>
+<li>The <strong>backend URL</strong> (an <code>https://….trycloudflare.com</code> address). It only works while his PC and tunnel are running.</li>
+<li>A <strong>test account</strong> that can log in on the phone. Do not use a real person's account.</li>
+<li>The project zip: <code>INFRA_backend-FULL.zip</code> (backend, phone app and Web in one folder).</li>
+</ul>
+
+<div class="warn"><strong>Read this first.</strong>
+<ul>
+<li>This backend is connected to the <strong>real Supabase database</strong>. Your tests create and end real rows in <code>devices</code> and <code>sessions</code>.</li>
+<li>The tunnel address is public. Only share it with the team, and ask Mervin to close the tunnel when testing ends.</li>
+<li>Never share or commit the backend <code>.env</code> file.</li>
+</ul></div>
+
+<h2>Step 1: Run Web on your PC</h2>
+<p>Unzip the project, then in PowerShell (use your own URL):</p>
+<pre>cd INFRA_backend\sealine-web-mervin-style
+pnpm install
+$env:API_BASE_URL="https://THE-URL-MERVIN-GAVE-YOU"
+pnpm --filter "@wpt/web" dev</pre>
+<p>Open <code>http://localhost:3000</code>. Use exactly this address. The backend only allows this origin, so a different port or a LAN IP will fail on log out and refresh.</p>
+<p class="note">Expected: a QR code with a countdown from about 60 seconds.</p>
+
+<h2>Step 2: Get a phone that can scan</h2>
+<p><strong>Option A (real app).</strong> The phone-app changes are already inside <code>apps/mobile</code>. Run <code>pnpm install</code> once in the <code>INFRA_backend</code> folder, then create <code>apps/mobile/.env</code> containing:</p>
+<pre>EXPO_PUBLIC_BACKEND_URL=https://THE-URL-MERVIN-GAVE-YOU</pre>
+<pre>cd INFRA_backend\apps\mobile
+npx expo start -c --tunnel</pre>
+<p>This project uses Expo SDK 54, so the newest Expo Go from the Play Store will refuse it. Plug the phone in by USB (USB debugging on), uninstall Expo Go, then press <code>a</code> in the Expo window. Expo installs the matching Expo Go. Log in, then open Settings and tap Scan QR Code.</p>
+<p><strong>Option B (no phone app).</strong> Get a phone access token for the test account and simulate the scan:</p>
+<pre>$env:PHONE_ACCESS_TOKEN="&lt;phone access token&gt;"
+node sealine-web-mervin-style\scripts\phone-scan.mjs '&lt;paste the QR text&gt;'</pre>
+
+<h2>Step 3: Run the checks</h2>
+<p>Mark each row pass or fail.</p>
+<table>
+<tr><th>Do this</th><th>Expected result</th><th>Result</th></tr>
+<tr><td>Open Web with only the URL set</td><td>A QR appears; no code changes needed</td><td class="box">pass / fail</td></tr>
+<tr><td>Scan within 60 seconds and tap "Link this account"</td><td>Web shows "Your account is linked" on its own; no refresh</td><td class="box">pass / fail</td></tr>
+<tr><td>Scan an old QR (older than 60 seconds)</td><td>Phone says expired or already used</td><td class="box">pass / fail</td></tr>
+<tr><td>Scan the same QR twice</td><td>The second scan is refused; Web stays linked</td><td class="box">pass / fail</td></tr>
+<tr><td>Link a second browser (Edge, or Chrome Incognito)</td><td>The first browser returns to the QR screen by itself; the phone stays logged in</td><td class="box">pass / fail</td></tr>
+<tr><td>Click Log out</td><td>Web returns to the QR screen</td><td class="box">pass / fail</td></tr>
+<tr><td>After linking, wait 70 seconds without touching anything</td><td>No "QR expired" message appears</td><td class="box">pass / fail</td></tr>
+</table>
+
+<h2>Optional: check the database</h2>
+<p>In the Supabase SQL Editor (read only):</p>
+<pre>select id, device_type, linked_at, revoked_at
+from devices
+where device_type = 'web'
+order by linked_at desc
+limit 5;</pre>
+<p class="note">After Log out, or after linking a second browser, the older row has a time in <code>revoked_at</code>. Do not edit or delete rows.</p>
+
+<h2>If something fails</h2>
+<table>
+<tr><th>You see</th><th>Likely cause</th></tr>
+<tr><td>"Different server" on the phone</td><td>Web and the phone app use different backend URLs. Make them identical.</td></tr>
+<tr><td>"Cannot reach the server"</td><td>The tunnel is closed or its address changed. Ask Mervin for the new one.</td></tr>
+<tr><td>Log out does nothing</td><td>You are not on <code>http://localhost:3000</code> exactly.</td></tr>
+<tr><td>"Project is incompatible with this version of Expo Go"</td><td>Wrong Expo Go version. See Option A above.</td></tr>
+</table>
+
+<h2>Report back</h2>
+<p>Send Mervin pass or fail for each row, plus anything that needed a change beyond the URL. Include screenshots of any failure and the last 10 lines of the backend window, with no passwords in them.</p>
+</main>
+</body>
+</html>
