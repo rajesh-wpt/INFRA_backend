@@ -39,6 +39,12 @@ import { deliverOtpCode } from "../sms/sender.js";
 import { encryptOtpPayload } from "../sms/payload-crypto.js";
 import { requireAuth } from "../middleware/auth.js";
 import { rateLimit } from "../middleware/rate-limit.js";
+import {
+  detectPlatform,
+  getClientIp,
+  getVerificationPath,
+  logOtpRequest,
+} from "../audit/audit-logger.js";
 import { phoneHash } from "../utils/phone-hash.js";
 import { normalizePhoneNumber } from "../utils/phone-normalize.js";
 
@@ -351,7 +357,7 @@ router.post(
     keyFn: normalizedPhoneKey("otp-send"),
     message: "Too many OTP requests. Please wait before retrying.",
   }),
-  async (_req: Request, res: Response) => {
+  async (req: Request, res: Response) => {
     try {
       const phoneNumber = (res.locals as { normalizedPhone?: string }).normalizedPhone as string;
       const db = getDb();
@@ -408,6 +414,31 @@ router.post(
       // Local-dev console delivery. Production delivery happens when the
       // gateway polls /api/v1/sms/outbox/poll (LOGIN-3.5) — no Twilio.
       await deliverOtpCode(phoneNumber, rawCode);
+
+      // LOGIN-3.12 — record which verification path fired. Internal only: the
+      // platform is detected from request signals and written to `audit_logs`,
+      // NEVER returned to the client (the response stays identical for every
+      // platform). logOtpRequest never throws, so a failed audit write cannot
+      // break the OTP flow.
+      const userAgentHeader = req.headers["user-agent"];
+      const userAgent = Array.isArray(userAgentHeader)
+        ? userAgentHeader[0]
+        : userAgentHeader;
+      const simHeader = req.headers["x-android-sim-available"];
+      const androidSimAvailable = Array.isArray(simHeader) ? simHeader[0] : simHeader;
+
+      const platform = detectPlatform({
+        userAgent,
+        androidSimAvailable,
+      });
+      await logOtpRequest({
+        phoneNumber,
+        platform,
+        verificationPath: getVerificationPath(platform),
+        timestamp: now,
+        ipAddress: getClientIp(req),
+        userAgent,
+      });
 
       res.json({ success: true });
     } catch {

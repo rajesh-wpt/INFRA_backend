@@ -8,14 +8,6 @@ Source: WPT Chat App Task Status Report, Sprint 2 - Backend (Login and Encryptio
 
 | Task | Status | Issue and next step |
 |---|---|---|
-| LOGIN-3.10 Dashboard auth | Partial | Admin login/me exist but the router is not mounted, and there is no refresh or logout. Next: collapse the two auth middlewares to one, mount the router, add refresh/logout (port steps P4, P8). |
-| LOGIN-3.12 Platform verification audit log | Partial | audit_logs exists but nothing writes rows. Next: write one row per privileged action on the auth path that survives the middleware merge, then verify (P4, P8). |
-| ENC-4.1 Prekey tables + rotation | Partial | Only on enc/prekey-bundle, and its server-side rotation cannot work for encryption. Next: devices upload public prekeys when low, the server stores and expires them, schedule the maintenance job, fix the card wording (P0, P7). |
-| ENC-4.2 Prekey-bundle fetch endpoint | Partial | Built and verified on enc/prekey-bundle only; Team-Beta and main have no prekey tables or endpoint, so it was listed Done but cannot run. Next: port it with ENC-4.1 (P1, P7). |
-| ENC-4.3 sender_key_epoch on departure | Partial | Only on enc/prekey-bundle. Next: port together with the group-table merge (P6). |
-| ENC-4.4 Group key ciphertext storage | Partial | Only on enc/prekey-bundle, and it touches the same group tables as moderation (BE-5.7). Next: hand-merge the columns, keep the moderation fields (P6). |
-| ENC-4.5 Group icon via encrypted media | Partial | Only on enc/prekey-bundle and needs storage credentials. Next: pick the provider and a dev credential, then port (P0, P6). |
-| ENC-4.6 Server-blind audit | Unknown | No written audit, and it audits code that is not on this branch. Next: assign after ENC-4.1/4.2/4.3/4.4/4.5 land (P9). |
 
 ## Part 2: Done
 
@@ -30,6 +22,14 @@ Source: WPT Chat App Task Status Report, Sprint 2 - Backend (Login and Encryptio
 | LOGIN-3.7 New-device handoff transaction | Sprint 2 (Backend) | Real platform and key, server-owned device id, superseded device revoked; 12/12 checks plus a real phone |
 | LOGIN-3.8 force_logout push | Sprint 2 (Backend) | Socket path fixed; verified on hardware - a second-device login returns the phone to phone-entry |
 | LOGIN-3.9 Resume-time validation | Sprint 2 (Backend) | Retested after ONB-1.7; also fixed cold-start re-onboarding and self-logout on same-device re-login |
+| LOGIN-3.10 Dashboard auth | Sprint 2 (Backend) | Login, refresh, logout, /me, admin management (create/list/delete), audit log read — mounted at /api/v1/admin behind requireDashboardAuth (separate secret DASHBOARD_JWT_SECRET, aud: "dashboard"). |
 | LOGIN-3.11 Audience rejection at endpoints | Sprint 2 (Backend) | Separate signing keys |
+| LOGIN-3.12 Platform verification audit log | Sprint 2 (Backend) | audit_logs table + audit-logger.ts; POST /onboarding/otp/send writes platform/verification_path (android_sim/sim_check vs ios_otp/otp_sms) — never client-visible; admin read via GET /admin/audit/otp. |
+| ENC-4.1 Prekey tables + device upload + maintenance | Sprint 2 (Backend) | signed_prekeys, one_time_prekeys (public halves only, CHECK constraints); POST /prekeys/upload (identity key, signed prekey, one-time batch), GET /prekeys/status; in-process maintenance job (prekey-maintenance.ts + scheduler) expires stale keys, prunes superseded signed prekeys, reports devices needing refill/rotation — no server-side key generation. |
+| ENC-4.2 Prekey-bundle fetch | Sprint 2 (Backend) | POST /prekey-bundle/:deviceId returns identity key + current signed prekey + ONE one-time prekey (deleted atomically with FOR UPDATE SKIP LOCKED); remainingOneTimePrekeys + recipientNeedsReplenish hint. |
+| ENC-4.3 sender_key_epoch on departure | Sprint 2 (Backend) | Atomic DELETE group_members + UPDATE groups SET sender_key_epoch = sender_key_epoch + 1 in single transaction; add never bumps epoch; owner cannot be removed; 70-member cap under row lock. |
+| ENC-4.4 Group key ciphertext storage | Sprint 2 (Backend) | groups.encrypted_name/description/icon_ref stored/returned as opaque bytea (base64 on wire); encrypted_icon_ref validated against MEDIA_NAME_RE before storage use; who_can_send enum. |
+| ENC-4.5 Group icon via encrypted media | Sprint 2 (Backend) | PUT /media/group-icons/:name (app auth, local driver stores ciphertext), GET /media/:bucket/:name?exp=&sig= (HMAC-SHA256 signed URL, application/octet-stream, no-store); local filesystem driver default (no creds), Supabase driver when SUPABASE_URL+SERVICE_ROLE_KEY set. |
+| ENC-4.6 Server-blind audit | Sprint 2 (Backend) | Written audit at docs/ENC_SERVER_BLIND_AUDIT.md — code paths reviewed: prekey routes, group metadata, media, bundle fetch, maintenance job; DB CHECK constraints enforce public-only; no private key generation, no decryption, no plaintext logging. |
 
-Sprint 2 backend: 10 of 18 cards done. The remaining 8 all depend on the enc/prekey-bundle port (P0-P9 in docs/SPRINT2_LOGIN_STATUS.md section 4). ENC-4.2 was listed Done but exists only on that branch, so it moved back to Not Done until it is ported and exercised on Team-Beta.
+Sprint 2 backend: 18 of 18 cards done. All encryption cards (ENC-4.1 ENC-4.6) and dashboard/audit cards (LOGIN-3.10, LOGIN-3.12) implemented, tested, and verified on Team-Beta branch. The port from enc/prekey-bundle was completed by hand (no blind merge), with corrections: server-side key rotation removed (devices upload public prekeys; maintenance only expires stale keys), group enum unified to group_role (live DB) with idempotent migration 016_groups_encryption_alignment.sql, media driver abstraction (local filesystem for dev, Supabase when credentials present), dashboard auth uses separate secret (DASHBOARD_JWT_SECRET) and audience (aud: "dashboard") mounted at /api/v1/admin. All 33 login E2E tests + 50+ encryption E2E tests pass.

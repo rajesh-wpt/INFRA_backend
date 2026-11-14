@@ -11,3 +11,9 @@ export { auditLog, auditAction } from "./audit-log-schema.js";
 export { devices, deviceType, platformEnum } from "./devices-schema.js";
 export { messageRelay } from "./message-relay-schema.js";
 export { phoneReuseCooldowns } from "./phone-reuse-cooldowns-schema.js";
+// LOGIN-3.10 / LOGIN-3.12
+export { dashboardSessions } from "./dashboard-sessions-schema.js";
+export { auditLogs } from "./audit-logs-schema.js";
+// ENC-4.1
+export { signedPrekeys } from "./signed-prekeys-schema.js";
+export { oneTimePrekeys } from "./one-time-prekeys-schema.js";

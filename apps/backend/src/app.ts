@@ -12,12 +12,17 @@ import reportsRoutes from "./routes/reports.js";
 import moderationRoutes from "./routes/moderation.js";
 import relayRoutes from "./routes/relay.js";
 import smsRoutes from "./routes/sms.js";
+import adminRoutes from "./routes/admin.js";
+import groupsRoutes from "./routes/groups.js";
+import mediaRoutes from "./routes/media.js";
+import { prekeysRouter, bundleRouter } from "./routes/prekey.js";
 import {
   initSocketRegistry,
   registerSocket,
   unregisterSocket,
 } from "./ws/socket-registry.js";
 import { verifyAccessToken } from "./auth/jwt.js";
+import { requireAuth } from "./middleware/auth.js";
 
 export type BackendServer = {
   httpServer: HttpServer;
@@ -47,10 +52,20 @@ export function createApp(): BackendServer {
   app.use(
     cors({
       origin: allowedOrigins.length > 0 ? allowedOrigins : false,
-      methods: ["GET", "POST"],
+      methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
       allowedHeaders: ["Content-Type", "Authorization"],
     }),
   );
+
+  // ── Real client IP behind a reverse proxy ──
+  // Off by default: trusting X-Forwarded-For when nothing infront of the
+  // process rewrites it lets a caller spoof the audit-log IP.
+  const trustProxy = process.env.TRUST_PROXY?.trim();
+  if (trustProxy === "true") {
+    app.set("trust proxy", 1);
+  } else if (trustProxy && Number.isInteger(Number(trustProxy)) && Number(trustProxy) > 0) {
+    app.set("trust proxy", Number(trustProxy));
+  }
 
   // ── Body parsing with size limit (100 KB max) ──
   app.use(express.json({ limit: "100kb" }));
@@ -67,6 +82,22 @@ export function createApp(): BackendServer {
   app.use(`/api/${API_VERSION}/moderation`, moderationRoutes);
   app.use(`/api/${API_VERSION}/relay`, relayRoutes);
   app.use(`/api/${API_VERSION}/sms`, smsRoutes);
+
+  // ── LOGIN-3.10 — dashboard auth (login/refresh are public; the router
+  //    applies requireDashboardAuth to everything past them) ──
+  app.use(`/api/${API_VERSION}/admin`, adminRoutes);
+
+  // ── ENC-4.1 / ENC-4.2 — prekey upload, status and bundle distribution.
+  //    App-audience auth: neither endpoint is public. ──
+  app.use(`/api/${API_VERSION}/prekeys`, requireAuth, prekeysRouter);
+  app.use(`/api/${API_VERSION}/prekey-bundle`, requireAuth, bundleRouter);
+
+  // ── ENC-4.3 / ENC-4.4 / ENC-4.5 — groups + encrypted icon URLs ──
+  app.use(`/api/${API_VERSION}/groups`, requireAuth, groupsRoutes);
+
+  // ── ENC-4.5 — encrypted media. GET is public by design (the signed URL is
+  //    the capability); PUT carries requireAuth inside the router. ──
+  app.use(`/api/${API_VERSION}/media`, mediaRoutes);
 
   const httpServer = createServer(app);
 
