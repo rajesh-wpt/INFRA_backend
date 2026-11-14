@@ -362,6 +362,18 @@ router.post(
       const db = getDb();
       const now = new Date();
 
+      // Check if user exists and is banned — reject login for banned accounts
+      const [existingUser] = await db
+        .select({ id: users.id, accountStatus: users.accountStatus })
+        .from(users)
+        .where(eq(users.phoneNumber, phoneNumber))
+        .limit(1);
+
+      if (existingUser && existingUser.accountStatus === "banned") {
+        res.status(401).json({ error: "ACCOUNT_BANNED" });
+        return;
+      }
+
       const [record] = await db
         .select()
         .from(otpVerifications)

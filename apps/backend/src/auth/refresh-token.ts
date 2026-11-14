@@ -22,6 +22,7 @@ import bcrypt from "bcryptjs";
 import { eq, and, isNull } from "drizzle-orm";
 import { getDb, type AppDb } from "../db/index.js";
 import { sessions } from "../db/sessions-schema.js";
+import { users } from "../db/users-schema.js";
 
 const REFRESH_TOKEN_BYTES = 48; // 384 bits — plenty of entropy
 const REFRESH_TOKEN_TTL_DAYS = 30;
@@ -104,6 +105,7 @@ export type ValidatedSession = {
  * 2. Look up the session by lookup key (fast DB index hit).
  * 3. Verify the token against the stored bcrypt hash.
  * 4. Reject if not found, wrong token, revoked, or expired.
+ * 5. Reject if user account is banned.
  *
  * Returns the session metadata on success — enough to mint a new
  * access token without an extra DB round-trip.
@@ -139,6 +141,17 @@ export async function validateRefreshToken(
 
   // Expired — 30-day window passed.
   if (row.expiresAt < now) return null;
+
+  // Check if user account is banned
+  const [user] = await db
+    .select({ accountStatus: users.accountStatus })
+    .from(users)
+    .where(eq(users.id, row.userId))
+    .limit(1);
+
+  if (!user || user.accountStatus === "banned") {
+    return null;
+  }
 
   return {
     sessionId: row.sessionId,

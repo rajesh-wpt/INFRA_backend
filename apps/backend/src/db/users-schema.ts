@@ -13,6 +13,14 @@
  */
 
 import { pgTable, varchar, text, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgEnum } from "drizzle-orm/pg-core";
+
+export const accountStatus = pgEnum("account_status", [
+  "active",
+  "banned",
+  "restricted",
+  "warned",
+]);
 
 export const users = pgTable(
   "users",
@@ -32,6 +40,9 @@ export const users = pgTable(
     /** About / bio — user-provided, max ~500 chars. */
     about: text("about"),
 
+    /** Account moderation status — enforced at login and API access. */
+    accountStatus: accountStatus("account_status").notNull().default("active"),
+
     /** Row creation time. */
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -49,5 +60,7 @@ export const users = pgTable(
     uniqueIndex("users_phone_number_unique").on(table.phoneNumber),
     // Fast lookup by phone number (the hot path on OTP-verify).
     index("users_phone_number_idx").on(table.phoneNumber),
+    // Fast lookup by account status (for banning/restricting enforcement).
+    index("users_account_status_idx").on(table.accountStatus),
   ],
 );
