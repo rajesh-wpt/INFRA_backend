@@ -15,10 +15,6 @@ import { router } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { Platform, AppState, AppStateStatus } from 'react-native';
 
-const getDeviceId = (): string => {
-  return `device_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-};
-
 const getDeviceName = (): string => {
   const platform = Platform.OS === 'ios' ? 'iPhone' : 'Android';
   return `${platform} ${Platform.OS === 'ios' ? '' : 'Device'}`;
@@ -128,7 +124,13 @@ export const useSession = () => {
    */
   const createSession = async (newUserId: string) => {
     try {
-      const newDeviceId = getDeviceId();
+      // Reuse the device id the server issued at OTP verify. The server is the
+      // authority for device identity (devices.id is a uuid) and echoes it
+      // back; only mint a placeholder when this install has none yet.
+      const requestedDeviceId =
+        deviceId ??
+        (await SecureStore.getItemAsync('deviceId')) ??
+        `device_${Date.now()}_${Math.random().toString(36).substring(7)}`;
       const deviceName = getDeviceName();
       const platform = Platform.OS === 'ios' ? 'ios' : 'android';
 
@@ -138,11 +140,13 @@ export const useSession = () => {
       const result = await onboardingApi.handleLoginHandoff({
         refreshToken: refreshToken ?? '',
         deviceInfo: {
-          deviceId: newDeviceId,
+          deviceId: requestedDeviceId,
           deviceName,
           platform,
         },
       });
+
+      const newDeviceId = result.deviceId;
 
       await SecureStore.setItemAsync('userId', newUserId);
       await SecureStore.setItemAsync('deviceId', newDeviceId);

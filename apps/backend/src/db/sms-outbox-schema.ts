@@ -39,6 +39,17 @@ export const smsOutbox = pgTable(
     otpHash: text("otp_hash").notNull(),
 
     /**
+     * AES-256-GCM ciphertext of the OTP, readable only with SMS_PAYLOAD_KEY.
+     *
+     * The gateway cannot send a hash, so the code has to travel through the
+     * queue — but it must not sit in the database in plaintext. This column
+     * holds `v1.<iv>.<tag>.<ciphertext>` and is set to NULL on ack, so a live
+     * code never outlives its delivery. NULL also means "no key configured"
+     * (local development), in which case the gateway receives no code.
+     */
+    payload: text("payload"),
+
+    /**
      * Dispatch status.
      *   pending  — ready for gateway pickup
      *   sent     — gateway dispatched successfully

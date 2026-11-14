@@ -25,8 +25,8 @@ export const devices = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     userId: uuid("user_id").notNull(),
     deviceType: deviceType("device_type").notNull(),
-    platform: platformEnum("platform").notNull(),
-    identityPublicKey: text("identity_public_key").notNull(),
+    platform: platformEnum("platform"),
+    identityPublicKey: text("identity_public_key"),
     isActive: boolean("is_active").notNull().default(true),
     linkedAt: timestamp("linked_at", { withTimezone: true })
       .notNull()

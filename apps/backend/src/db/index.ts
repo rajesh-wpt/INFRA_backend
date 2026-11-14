@@ -1,8 +1,6 @@
 import { drizzle } from "drizzle-orm/node-postgres";
-import pg from "pg";
 import * as schema from "./schema.js";
-
-const { Pool } = pg;
+import { createPool } from "./pool.js";
 
 let _db: ReturnType<typeof drizzle<typeof schema>> | null = null;
 
@@ -20,7 +18,7 @@ export function getDb() {
     throw new Error("DATABASE_URL is not set");
   }
 
-  const pool = new Pool({ connectionString });
+  const pool = createPool({ connectionString });
   _db = drizzle(pool, { schema });
   return _db;
 }

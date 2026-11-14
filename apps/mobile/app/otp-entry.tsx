@@ -139,10 +139,19 @@ export default function OtpEntryScreen() {
       setIsVerifying(true);
 
       try {
-        const result = await onboardingApi.verifyOtp({ phoneNumber, code: entered });
+        const result = await onboardingApi.verifyOtp({
+          phoneNumber,
+          code: entered,
+          // State the platform so the server does not record every device as
+          // Android (LOGIN-3.7). Identity keys are provisioned later.
+          deviceInfo: { platform: Platform.OS === 'ios' ? 'ios' : 'android' },
+        });
 
         if (result.status === 'success') {
-          const deviceId = `device_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+          // The server minted the device id (devices.id is a uuid) and returned
+          // it. Persist that exact value: inventing a local id here broke
+          // /session/check, socket auth and refresh after the first reload.
+          const deviceId = result.deviceId;
           // Write all tokens in parallel â€” saves ~100ms on cold storage.
           await Promise.all([
             SecureStore.setItemAsync('userId', result.userId),

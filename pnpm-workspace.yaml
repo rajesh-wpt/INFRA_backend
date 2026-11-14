@@ -1,3 +1,11 @@
 packages:
   - "apps/*"
   - "packages/*"
+
+# pnpm 10 no longer reads settings from package.json; without this, postinstall
+# scripts of these native packages are skipped and bcrypt fails to load at runtime.
+onlyBuiltDependencies:
+  - bcrypt
+  - esbuild
+  - sharp
+  - unrs-resolver
