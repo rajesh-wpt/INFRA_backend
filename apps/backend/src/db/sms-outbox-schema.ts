@@ -5,10 +5,9 @@
  * the SMS gateway device polls for pending rows, dispatches via
  * the SMS provider, and marks them as sent/failed.
  *
- * SECURITY: The raw OTP code is NEVER stored in this table.
- * Only the SHA-256 hash is stored. The SMS gateway must look up
- * the OTP from a secure source (e.g., environment variable or
- * a temporary encrypted store) — NOT from this table.
+ * SECURITY: The raw OTP code is never stored in plaintext. `otp_hash` keeps a
+ * SHA-256 hash for auditing, and the code itself travels only as AES-256-GCM
+ * ciphertext in `payload`, which is cleared as soon as the gateway acks.
  */
 
 import {

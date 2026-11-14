@@ -379,26 +379,31 @@ router.post(
       const codeHash = hashOtpCode(rawCode);
       const expiresAt = new Date(now.getTime() + OTP_TTL_MS);
 
-      // Delete old row + insert new verification + queue SMS outbox row.
-      // SECURITY: raw OTP code is NEVER stored in DB — only the SHA-256 hash.
-      await Promise.all([
-        db
-          .delete(otpVerifications)
-          .where(eq(otpVerifications.phoneNumber, phoneNumber)),
-        db.insert(otpVerifications).values({
+      // Replace the previous verification and queue the SMS atomically.
+      //
+      // These three statements used to run in a Promise.all(): the DELETE and
+      // the INSERT raced on separate pool connections, so the delete could
+      // commit last and remove the row it had just written. The caller then
+      // got `success: true` while /otp/verify answered NO_ACTIVE_SESSION — an
+      // intermittent "OTP never arrives / code rejected" report that is
+      // invisible in the logs. Ordering also keeps a queued SMS from existing
+      // without its verification row.
+      await db.transaction(async (tx) => {
+        await tx.delete(otpVerifications).where(eq(otpVerifications.phoneNumber, phoneNumber));
+        await tx.insert(otpVerifications).values({
           phoneNumber,
           codeHash,
           expiresAt,
           sentAt: now,
-        }),
-        db.insert(smsOutbox).values({
+        });
+        await tx.insert(smsOutbox).values({
           phoneNumber,
           otpHash: codeHash,
           // Encrypted for the self-hosted gateway; NULL when no key is set.
           payload: encryptOtpPayload(rawCode),
           status: "pending",
-        }),
-      ]);
+        });
+      });
 
       // Local-dev console delivery. Production delivery happens when the
       // gateway polls /api/v1/sms/outbox/poll (LOGIN-3.5) — no Twilio.
