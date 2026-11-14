@@ -59,7 +59,12 @@ export const useSession = () => {
         setDeviceId(storedDeviceId);
         const storedDisplayPhone = await SecureStore.getItemAsync('displayPhone');
         if (storedDisplayPhone) setDisplayPhone(storedDisplayPhone);
-        await validateSession(storedDeviceId);
+        const alive = await validateSession(storedDeviceId);
+        // A stored session that validates is authenticated. Without this the
+        // app only learned it was logged in through createSession(), so a cold
+        // start with valid tokens looked signed-out to every consumer of this
+        // hook (including the force_logout socket).
+        if (alive) setIsAuthenticated(true);
       } else if (storedUserId || storedDeviceId) {
         await SecureStore.deleteItemAsync('userId');
         await SecureStore.deleteItemAsync('deviceId');
@@ -188,6 +193,8 @@ export const useSession = () => {
     sessionMessage,
     createSession,
     checkSession,
+    /** Re-read SecureStore and re-validate — call after a login writes tokens. */
+    refreshSession: initializeSession,
     logout,
   };
 };

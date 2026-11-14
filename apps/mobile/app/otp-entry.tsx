@@ -1,5 +1,6 @@
 ﻿// app/otp-entry.tsx
 import { onboardingApi } from '@/api/onboardingApi';
+import { useSessionContext } from '@/providers/SessionProvider';
 import { useKeyboardHeight } from '@/hooks/use-keyboard-height';
 import { requireLegalAccepted } from '@/lib/legal-acceptance';
 import { Ionicons } from '@expo/vector-icons';
@@ -45,6 +46,7 @@ function formatClock(totalSeconds: number): string {
 }
 
 export default function OtpEntryScreen() {
+  const { refreshSession } = useSessionContext();
   const params = useLocalSearchParams<{ phoneNumber: string; displayPhone?: string }>();
   const phoneNumber = params.phoneNumber || '';
   const displayPhone = params.displayPhone || '';
@@ -160,6 +162,11 @@ export default function OtpEntryScreen() {
             SecureStore.setItemAsync('refreshToken', result.refreshToken),
             SecureStore.setItemAsync('displayPhone', displayPhone),
           ]);
+
+          // SessionProvider mounts once, so its in-memory userId/deviceId are
+          // still null at this point and the force_logout socket would not
+          // connect until an app restart. Re-read state from storage now.
+          await refreshSession();
 
           if (result.routing === 'chats') {
             router.replace('/(tabs)');
