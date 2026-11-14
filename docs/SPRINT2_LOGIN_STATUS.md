@@ -211,7 +211,7 @@ and `maxLength={1}` rejected a re-typed digit — the only escape was Resend.
 Clearing a box is now honoured; verified on the device (typed a wrong digit,
 backspaced it, then entered the real code).
 
-## 4. Encryption items — why they are not in this branch
+## 4. Encryption items — port plan (no code written yet)
 
 `LOGIN-3.10`, `LOGIN-3.12` and all of `ENC-4.x` exist only on
 `origin/enc/prekey-bundle`, which forks from `c68ea96` (50 commits behind
@@ -226,7 +226,7 @@ What is on `Team-Beta` today:
 
 So `LOGIN-3.10`/`3.12` are genuinely partial, not just unmerged.
 
-The port is not a mechanical cherry-pick. The six enc commits are:
+The six enc commits, in order:
 
 ```
 a73893c completed 3.10 to 3.12
@@ -237,50 +237,63 @@ e011a85 3.12 follow-ups: lint/typecheck fixes, audit logger guard, mobile rename
 5bc8d73 complited ENC4.5 to group url ask
 ```
 
-Known blockers, in the order they will bite:
+### Sequencing
+
+Do these in order; each one blocks the next. Owners are roles — put names on
+them before the branch is opened.
+
+| # | Task | Owner | Done when |
+|---|---|---|---|
+| P0 | Decide the storage provider for encrypted media and get its credentials (ENC-4.5). Decide `cron` vs in-process timer for the maintenance job. | team lead | provider + one working dev credential; scheduling choice recorded |
+| P1 | Create `sprint2/integration` from `Team-Beta`; cherry-pick the six commits with `-x` and stop at the first conflict. | backend | branch exists, conflict list matches §"Known blockers" below (no surprises) |
+| P2 | Renumber the enc migrations to `014`–`016` (`014_dashboard_tables.sql`, `015_audit_logs.sql`, `016_prekey_tables.sql`); update the three `apply-*-migration.ts` scripts and any hardcoded names. | backend | migrations apply cleanly on a scratch DB in numeric order |
+| P3 | Normalise the existing duplicate migration numbers (`009`, `010`, `011` each exist twice on `Team-Beta`). Do this **before** adding 014+, so the ledger stays readable. | backend | `ls src/db/migrations` shows one file per number |
+| P4 | Pick one auth middleware: keep `middleware/auth.ts` (used by 8 routes) and port only what `auth.middleware.ts` adds; delete the loser. Do not merge both. | backend | `grep -r auth.middleware src` returns nothing; all 8 routes still mount |
+| P5 | Merge `devices-schema.ts` by hand: keep the branch's nullable `platform`/`identity_public_key`, add only the prekey columns. Do not take either file wholesale. | backend | `pnpm typecheck` clean; no duplicate column definitions |
+| P6 | Reconcile `routes/groups.ts` with the branch's groups/moderation/blocks schema (ENC-4.4/4.5 touch BE-5.7 tables). Keep the moderation fields; add ciphertext/icon columns. | backend | group create/read still works; moderation tests pass |
+| P7 | Rework ENC-4.1 to the honest design: the client uploads a fresh **public** prekey bundle when its stock runs low; the server stores, expires and reports. The server never generates or rotates key material it must not know. Schedule the maintenance job (P0) and fix the card wording. | backend + mobile | a seeded low-stock device triggers a replenish prompt; job expires stale bundles on schedule |
+| P8 | Mount the admin router and finish LOGIN-3.10 (login, refresh, logout, role check). Write the LOGIN-3.12 audit rows from the auth/middleware path that actually exists after P4. | backend | `/admin/login` → `/admin/me` works with a real admin row; every privileged action writes one audit row |
+| P9 | Only now write ENC-4.6 (server-blind audit) — it audits the code above. | backend | audit states, per card, what the server can and cannot see, with evidence |
+
+### Known blockers (they will all bite during P1–P6)
 
 1. **Migration numbers collide.** enc adds `004_dashboard_tables.sql`,
    `005_audit_logs.sql`, `006_prekey_tables.sql`; `Team-Beta` already uses
    004/004b/005/006 for message relay, reports/moderation and the message-type
-   enum. Renumber to `014`–`016` and update the three `apply-*-migration.ts`
-   scripts. Team-Beta also has duplicate 009/010/011 numbers — a cleanup that
-   should happen before more migrations land.
+   enum. See P2/P3.
 2. **Two auth middlewares.** enc ships `middleware/auth.middleware.ts`; the
-   branch uses `middleware/auth.ts` in eight routes. Pick one; do not merge
-   both.
+   branch uses `middleware/auth.ts` in eight routes. See P4.
 3. **`devices-schema.ts` conflict.** enc adds prekey columns and makes
    `platform` nullable; `Team-Beta` already made `platform`/
-   `identity_public_key` nullable. Merge the column additions by hand, do not
-   take either file wholesale.
-4. **`routes/groups.ts` (enc) vs the branch's groups/moderation/blocks
-   schema.** ENC-4.4/4.5 touch the same tables as BE-5.7 moderation.
+   `identity_public_key` nullable. See P5.
+4. **`routes/groups.ts` overlap** with groups/moderation/blocks. See P6.
 5. **`storage/signed-url.ts` needs storage credentials** for encrypted media
-   (ENC-4.5). Decide the provider and a dev fallback before merging, or the
-   group-icon path cannot be tested.
+   (ENC-4.5). Without P0 the group-icon path cannot be tested.
 6. **ENC-4.1's design is wrong as written.** The server cannot rotate keys it
-   must not know. Rotation has to be device-driven: the client uploads a new
-   public prekey bundle when its stock is low, the server stores and expires
-   bundles, and the maintenance job only reports/expires. Fix the card wording
-   at the same time. The job also has to be scheduled (cron/timer), not just
-   present.
-7. Lockfile/`package.json` conflicts (`cron`, storage SDK). Do not touch
+   must not know. See P7.
+7. **Lockfile/`package.json` conflicts** (`cron`, storage SDK). Do not touch
    `apps/mobile/package-lock.json` — it is independently modified.
 
-Only after those ports land can ENC-4.6 (server-blind audit) be written
-honestly, because it is an audit of that code.
-
-Suggested target: a single integration branch, e.g.
+### Verification gate (must hold before the branch is offered for review)
 
 ```
-git checkout -b sprint2/integration Team-Beta
-git cherry-pick -x a73893c e011a85 30ff675 4a3753a 248fb92 5bc8d73
-# resolve 1–7 above, renumber migrations, then:
 pnpm -C apps/backend typecheck && pnpm -C apps/backend lint
-tsx apps/backend/scripts/sprint2-login.e2e.mts   # must stay green
+pnpm -C apps/backend test            # pool-guard etc.
+tsx apps/backend/scripts/sprint2-login.e2e.mts   # 33 checks, must stay green
 ```
 
-Estimate: 1–2 days, mostly migration renumbering and reconciling the two auth
-middlewares — not a copy-paste.
+Plus one manual pass on the Android device: login, kill/relaunch (must resume),
+second-device login (must kick), and — once ENC-4.2 lands — fetch a prekey
+bundle for a fresh device.
+
+### Estimate and risk
+
+1–2 days of focused work, mostly P2/P3 numbering and P4/P5 reconciliation.
+The high-risk items are P6 (shared tables with moderation) and P7 (a design
+change, not a merge). Do not accept a "just cherry-pick it" merge: the
+duplicate auth middleware and the prekey rotation job both need a decision,
+and hauling both middlewares in would leave two ways to authenticate.
+
 
 ## 5. Deployment notes
 
