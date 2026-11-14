@@ -46,6 +46,13 @@ export function useForceLogout(userId: string | null, deviceId: string | null) {
 
       // §7.3 — force_logout received: old device was superseded.
       socket.on('force_logout', async () => {
+        // This socket speaks for the identity captured in `deviceId`. If the
+        // store now holds a different device, this device re-logged in after
+        // the push was queued — honouring it would wipe the session the user
+        // just created (self-inflicted logout on the same phone).
+        const currentDeviceId = await SecureStore.getItemAsync('deviceId');
+        if (currentDeviceId !== deviceId) return;
+
         await SecureStore.deleteItemAsync('userId');
         await SecureStore.deleteItemAsync('deviceId');
         await SecureStore.deleteItemAsync('accessToken');

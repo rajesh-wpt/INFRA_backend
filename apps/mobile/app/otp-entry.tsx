@@ -215,7 +215,18 @@ export default function OtpEntryScreen() {
 
   const handleOtpChange = (text: string, index: number) => {
     const cleaned = text.replace(/\D/g, '');
-    if (!cleaned) return;
+
+    // Clearing a box must be honoured: with maxLength=1 a filled box rejects
+    // any re-typed digit, so ignoring the empty string left a mistyped digit
+    // uncorrectable and forced a full resend.
+    if (!cleaned) {
+      if (!otp[index]) return;
+      const cleared = [...otp];
+      cleared[index] = '';
+      setOtp(cleared);
+      setError('');
+      return;
+    }
 
     const next = [...otp];
     let pos = index;

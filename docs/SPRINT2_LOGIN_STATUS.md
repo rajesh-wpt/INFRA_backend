@@ -10,7 +10,7 @@ Scope: the Sprint 2 "Not Done" list in the Team Beta task report.
 |---|---|---|---|
 | LOGIN-3.5 OTP + SMS gateway | Error (Twilio) | **Fixed** | `scripts/sprint2-login.e2e.mts` |
 | LOGIN-3.7 New-device handoff transaction | Partial | **Fixed** | same suite |
-| LOGIN-3.8 force_logout push | Error | **Fixed** | same suite, two live sockets |
+| LOGIN-3.8 force_logout push | Error | **Fixed + proven on a real phone** | e2e suite, then adb |
 | LOGIN-3.9 Resume-time validation | "Done" | **Re-verified + 2 bugs fixed** | same suite |
 | LOGIN-3.10 Dashboard auth | Partial | **Not fixed** — port required | see §4 |
 | LOGIN-3.12 Platform verification audit log | Partial | **Not fixed** — port required | see §4 |
@@ -20,12 +20,15 @@ Scope: the Sprint 2 "Not Done" list in the Team Beta task report.
 | ENC-4.5 Group icon via encrypted media | Partial | **Not fixed** — port required | see §4 |
 | ENC-4.6 Server-blind audit | Unknown | **Not done** — blocked on the ports | see §4 |
 
-The login half is done, tested, and committed. The encryption half cannot be
-fixed from this branch: none of that code exists on `Team-Beta` or `main`; it
-lives only on `origin/enc/prekey-bundle`. Section 4 is a concrete port plan.
+The login half is done, tested on the e2e suite and on a real Android device,
+and committed. The encryption half cannot be fixed from this branch: none of
+that code exists on `Team-Beta` or `main`; it lives only on
+`origin/enc/prekey-bundle`. Section 4 is a concrete port plan.
 
 `pnpm lint` (0 errors; it was 31), `pnpm typecheck`, `pool-guard.test.ts`
-(12/12) and the new Sprint 2 suite (33/33) all pass.
+(12/12) and the new Sprint 2 suite (33/33) all pass. `apps/web` lint cannot run
+in this checkout (`next: command not found` — that app's deps are not
+installed); `apps/mobile` lint reports only pre-existing findings.
 
 ## 2. What changed (login)
 
@@ -170,6 +173,44 @@ Still to do on hardware: the two-phone test (phone A logged in, log in on
 phone B, A must return to the phone-entry screen). The server side is proven;
 the remaining risk is native only.
 
+### Real-device verification (vivo 1901, Android 11, Expo Go 54)
+
+Driven over `adb` against the LAN backend (`http://192.168.1.2:4000`); the
+device and the laptop were on the same `/24`, so the mobile build used the LAN
+URL throughout, never `localhost`.
+
+| Check | Result |
+| --- | --- |
+| OTP login from the phone (send → verify → profile setup → Chats) | pass |
+| `devices` row: `platform=android`, `is_active=true`, server `id` persisted | pass |
+| `sessions` row live, no revoked row left behind | pass |
+| Log in as the same number from a second device | `force_logout` pushed to 1 socket; phone returned to phone-entry; old device + session revoked |
+| Kill the app and relaunch with a valid session | resumes into Chats |
+
+That last row is the reported symptom ("logged out after closing the app") and
+it did **not** pass on the first run. Two separate defects came out of the test:
+
+- **Cold start always re-ran onboarding.** `app/legal-acceptance.tsx` never
+  read the durable acceptance flag, so every launch was splash → full terms →
+  phone-entry, even for a signed-in user; the stored session was never routed
+  to. The screen now checks `hasAcceptedLegal()` on mount and resumes to
+  `/(tabs)` when a session exists (`/phone-entry` otherwise), rendering nothing
+  while that check runs so the terms cannot flash. The `(tabs)` layout still
+  re-checks both values, so the gate is not weakened.
+- **A same-device re-login logged itself out.** `/otp/verify` correctly revokes
+  the superseded device and pushes `force_logout` to its socket, but that socket
+  can be the *same* phone if it was still connected while showing phone-entry.
+  The handler wiped the tokens the user had just been issued and bounced them
+  back to login. `useForceLogout` now compares the stored `deviceId` with the
+  identity its socket was opened for and ignores the push when they differ.
+  A genuine handoff still logs out immediately (re-tested after the change).
+
+Also fixed while driving the flow: a mistyped OTP digit could not be corrected.
+`handleOtpChange` returned early on an empty string, so Backspace did nothing
+and `maxLength={1}` rejected a re-typed digit — the only escape was Resend.
+Clearing a box is now honoured; verified on the device (typed a wrong digit,
+backspaced it, then entered the real code).
+
 ## 4. Encryption items — why they are not in this branch
 
 `LOGIN-3.10`, `LOGIN-3.12` and all of `ENC-4.x` exist only on
@@ -279,6 +320,7 @@ address, never `localhost`. Re-check with `ip -4 addr` after any network move.
 ## 6. Commits
 
 ```
+(this commit) fix(mobile): resume the stored session on cold start; harden force-logout
 eee564b fix(backend): make OTP send atomic; add Sprint 2 login e2e
 4df23ce fix(mobile): persist the server-issued device id and refresh session state
 94352fc fix(backend): Sprint 2 login — SMS gateway, device identity, force-logout

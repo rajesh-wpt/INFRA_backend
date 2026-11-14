@@ -1,8 +1,9 @@
 // app/legal-acceptance.tsx
-import { recordLegalAcceptance } from '@/lib/legal-acceptance';
+import { hasAcceptedLegal, recordLegalAcceptance } from '@/lib/legal-acceptance';
 import { Fonts } from '@/constants/typography';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import * as SecureStore from 'expo-secure-store';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
@@ -350,6 +351,9 @@ export default function LegalAcceptanceScreen() {
   const [viewportH, setViewportH] = useState(0);
   const [contentH, setContentH] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
+  // True until the durable-acceptance check settles, so a returning user never
+  // sees the terms flash before being resumed into the app.
+  const [resuming, setResuming] = useState(true);
 
   const goBack = useCallback(() => {
     router.back();
@@ -362,6 +366,31 @@ export default function LegalAcceptanceScreen() {
     });
     return () => sub.remove();
   }, [goBack]);
+
+  // Acceptance is durable: a returning user must not be made to re-read the
+  // terms on every launch, and a stored session must resume instead of being
+  // dropped back on the login screen. The (tabs) gate re-checks both values,
+  // so an expired session still lands on phone-entry.
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        if (!(await hasAcceptedLegal())) return;
+
+        const userId = await SecureStore.getItemAsync('userId');
+        if (!cancelled) router.replace(userId ? '/(tabs)' : '/phone-entry');
+      } catch {
+        // Storage unavailable — fall through and show the terms.
+      } finally {
+        if (!cancelled) setResuming(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleAgree = async () => {
     if (!hasReadTerms || isSaving) return;
@@ -392,6 +421,10 @@ export default function LegalAcceptanceScreen() {
   const checkContentFits = useCallback((ch: number, vh: number) => {
     if (ch > 0 && vh > 0 && ch <= vh) setHasReadTerms(true);
   }, []);
+
+  if (resuming) {
+    return <View style={styles.root} />;
+  }
 
   return (
     <View style={styles.root}>
