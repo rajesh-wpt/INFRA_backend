@@ -8,17 +8,17 @@ This document provides a clean, at-a-glance overview of each onboarding file, th
 
 ## 📁 Project Structure
 
-The onboarding experience is split into focused screens and a mock API layer. Each file maps to a specific onboarding requirement (`ONB-*`), making the flow easy to understand, test, and maintain.
+The onboarding experience is split into focused screens and a real API layer. Each file maps to a specific onboarding requirement (`ONB-*`), making the flow easy to understand, test, and maintain.
 
 ---
 
 ## 🧭 File-by-File Overview
 
-### 1. `api/mockOnboardingApi.ts`
+### 1. `api/onboardingApi.ts`
 
 **Card:** `ONB-1.0`
 
-The mock onboarding API handles the core authentication and onboarding validation logic.
+The onboarding API client talks to the backend and covers the core authentication and onboarding validation flow. The unused `api/mockOnboardingApi.ts` layer has been removed.
 
 **Key features:**
 
@@ -31,17 +31,18 @@ The mock onboarding API handles the core authentication and onboarding validatio
 
 ---
 
-### 2. `app/splash.tsx`
+### 2. `app/index.tsx`
 
 **Card:** `ONB-1.1`
 
-The splash screen is the entry point to the onboarding experience.
+The splash screen is the entry point to the onboarding experience and routes explicitly to legal acceptance.
 
 **Key features:**
 
 * User must tap to proceed
 * No skip option
 * No guest mode
+* Durable legal gate (`lib/legal-acceptance.ts`) re-checks acceptance on every entry point, so a deep link or restored navigation stack cannot skip onboarding
 
 **Goal:** Ensure every user enters the required onboarding flow before accessing the application.
 
@@ -71,9 +72,12 @@ Handles the required legal agreements before account creation can continue.
 
 **Key features:**
 
+* Full Terms of Service and Privacy Policy (v1.1) text
 * Terms of Service acceptance
 * Privacy Policy acceptance
 * 16+ requirement bundled into the acceptance flow
+* Single **“I agree, I am 16+”** action, enabled once the document is scrolled to the end
+* Acceptance persisted in SecureStore and re-checked by downstream screens
 * Backend-enforced legal acceptance
 
 **Goal:** Ensure required legal and age requirements are acknowledged before proceeding.
@@ -90,7 +94,7 @@ Provides the OTP verification interface.
 
 * Maximum of **3 verification attempts**
 * Account/session lockout handling
-* OTP resend support
+* OTP resend support, blocked during lockout
 * Expired-code handling
 * Registered-number verification
 
@@ -108,7 +112,7 @@ Collects the minimum profile information required to complete onboarding.
 
 * Name is required
 * About/bio field is required
-* About/bio cannot be cleared once required
+* About/bio defaults to a neutral value (no placeholder product name) and cannot be cleared once required
 * Profile photo is optional
 
 **Goal:** Ensure every completed profile contains the required information while keeping the photo optional.
@@ -125,6 +129,7 @@ Handles account access when onboarding occurs on a new device.
 
 * Confirmation is shown only on a new device
 * Existing/old devices are silently logged out
+* `force_logout` socket connects on the `/realtime` path (default namespace)
 
 **Goal:** Maintain a single active device experience while minimizing unnecessary interruption on the previous device.
 
@@ -187,8 +192,8 @@ Onboarding Complete
 
 | File                       | Requirement     | Purpose                                |
 | -------------------------- | --------------- | -------------------------------------- |
-| `api/mockOnboardingApi.ts` | `ONB-1.0`       | OTP, legal, and registration API logic |
-| `app/splash.tsx`           | `ONB-1.1`       | Required onboarding entry              |
+| `api/onboardingApi.ts`     | `ONB-1.0`       | OTP, legal, and registration API logic |
+| `app/index.tsx`            | `ONB-1.1`       | Required onboarding entry              |
 | `app/phone-entry.tsx`      | `ONB-1.2`       | Phone collection and validation        |
 | `app/legal-acceptance.tsx` | `ONB-1.3`       | Legal and age acceptance               |
 | `app/otp-entry.tsx`        | `ONB-1.4 & 1.6` | OTP verification and security          |

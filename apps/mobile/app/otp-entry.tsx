@@ -1,6 +1,7 @@
 ﻿// app/otp-entry.tsx
 import { onboardingApi } from '@/api/onboardingApi';
 import { useKeyboardHeight } from '@/hooks/use-keyboard-height';
+import { requireLegalAccepted } from '@/lib/legal-acceptance';
 import { Ionicons } from '@expo/vector-icons';
 import { parsePhoneNumberFromString } from 'libphonenumber-js/mobile';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -93,6 +94,22 @@ export default function OtpEntryScreen() {
       return () => clearInterval(timer);
     }
   }, [expirySeconds, expired]);
+
+  // --- Legal gate ---
+  // OTP entry can be reached via a restored stack or deep link; bounce back to
+  // acceptance unless it was durably recorded.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const legalAccepted = await requireLegalAccepted();
+      if (!cancelled && !legalAccepted) {
+        router.replace('/legal-acceptance');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // --- Shake animation ---
   const runShake = useCallback(() => {
@@ -212,9 +229,12 @@ export default function OtpEntryScreen() {
 
   // --- Resend OTP ---
   const handleResend = async () => {
-    if (resendCooldown > 0) return;
+    // Blocked while a code is still fresh OR while the account is locked out.
+    // The OTP send endpoint clears the server-side lockout, so without this
+    // guard a resend can be used to escape the 3-attempt wait.
+    if (resendCooldown > 0 || isLocked) return;
 
-    // Fire resend optimistically â€” update UI immediately, don't block on network.
+    // Update UI optimistically so the button can't be double-fired.
     setResendCooldown(30);
     setExpirySeconds(CODE_LIFETIME);
     setOtp(Array(BOXES).fill(''));
@@ -222,8 +242,24 @@ export default function OtpEntryScreen() {
 
     try {
       await onboardingApi.sendOtp({ phoneNumber });
-    } catch {
-      // If resend failed, stop the cooldown so user can retry.
+    } catch (e: any) {
+      const code = e?.body?.error ?? e?.error ?? e?.message;
+
+      if (code === 'OTP_LOCKED_OUT') {
+        setIsLocked(true);
+        setLockoutSeconds((prev) => (prev > 0 ? prev : 30));
+        setError('Too many attempts. Try again shortly.');
+        return;
+      }
+
+      if (code === 'RESEND_COOLDOWN_ACTIVE' || e?.status === 429) {
+        const seconds = Number(e?.body?.secondsRemaining);
+        setResendCooldown(Number.isFinite(seconds) && seconds > 0 ? Math.ceil(seconds) : 30);
+        setError('Too many OTP requests. Please wait before retrying.');
+        return;
+      }
+
+      // If resend failed for another reason, stop the cooldown so user can retry.
       setResendCooldown(0);
       Alert.alert('Error', 'Failed to resend OTP. Please try again.');
     }
@@ -330,7 +366,7 @@ export default function OtpEntryScreen() {
             <Pressable
               style={styles.resend}
               onPress={handleResend}
-              disabled={resendCooldown > 0 || isVerifying}
+              disabled={resendCooldown > 0 || isVerifying || isLocked}
               hitSlop={8}
             >
               <Text style={styles.resendText}>
@@ -338,10 +374,14 @@ export default function OtpEntryScreen() {
                 <Text
                   style={[
                     styles.resendLink,
-                    resendCooldown > 0 && styles.resendLinkDisabled,
+                    (resendCooldown > 0 || isLocked) && styles.resendLinkDisabled,
                   ]}
                 >
-                  {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend OTP'}
+                  {isLocked
+                    ? `Try again in ${lockoutSeconds}s`
+                    : resendCooldown > 0
+                      ? `Resend in ${resendCooldown}s`
+                      : 'Resend OTP'}
                 </Text>
               </Text>
             </Pressable>

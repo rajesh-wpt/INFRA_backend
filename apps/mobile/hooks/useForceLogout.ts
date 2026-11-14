@@ -27,7 +27,12 @@ export function useForceLogout(userId: string | null, deviceId: string | null) {
     const connect = async () => {
       const accessToken = await SecureStore.getItemAsync('accessToken');
 
-      const socket = io(`${BACKEND_URL}/realtime`, {
+      // The server attaches Socket.IO to the "/realtime" HTTP path (see
+      // apps/backend/src/app.ts). The default namespace is used, so the path
+      // must be passed as an option — not appended to the URL, which would
+      // target a non-existent namespace.
+      const socket = io(BACKEND_URL, {
+        path: '/realtime',
         transports: ['websocket', 'polling'],
         auth: { userId, deviceId, token: accessToken },
       });

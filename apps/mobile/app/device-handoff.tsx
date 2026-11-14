@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSession } from '@/hooks/useSession';
+import { requireLegalAccepted } from '@/lib/legal-acceptance';
 import { parsePhoneNumberFromString } from 'libphonenumber-js/mobile';
 import * as SecureStore from 'expo-secure-store';
 
@@ -27,6 +28,12 @@ export default function DeviceHandoffScreen() {
   useEffect(() => {
     const performHandoff = async () => {
       try {
+        const legalAccepted = await requireLegalAccepted();
+        if (!legalAccepted) {
+          router.replace('/legal-acceptance');
+          return;
+        }
+
         await createSession(userId);
         // Store the formatted phone number for display in Settings/Chats
         if (phoneNumber) {

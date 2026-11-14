@@ -40,7 +40,7 @@ function ProfileCard({
       <View style={ss.profileInfo}>
         <Text style={[ss.profileName, { color: colors.text }]}>ONB User</Text>
         <Text style={[ss.profilePhone, { color: colors.textDim }]}>{phone || 'Not set'}</Text>
-        <Text style={[ss.profileAbout, { color: colors.textMuted }]}>Hey there! I&apos;m using ONB</Text>
+        <Text style={[ss.profileAbout, { color: colors.textMuted }]}>Available</Text>
       </View>
     </View>
   );

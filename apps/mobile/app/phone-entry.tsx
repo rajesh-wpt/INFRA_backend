@@ -1,6 +1,7 @@
 // app/phone-entry.tsx
 import { onboardingApi } from '@/api/onboardingApi';
 import { COUNTRIES, type Country } from '@/constants/countries';
+import { requireLegalAccepted } from '@/lib/legal-acceptance';
 import { Fonts } from '@/constants/typography';
 import { useKeyboardHeight } from '@/hooks/use-keyboard-height';
 import { Ionicons } from '@expo/vector-icons';
@@ -180,6 +181,14 @@ export default function PhoneEntryScreen() {
 
   const handleContinue = async () => {
     if (!valid) {
+      return;
+    }
+
+    // Legal acceptance is durably recorded; re-check it so a skipped or
+    // restored navigation stack cannot reach OTP without accepting.
+    const legalAccepted = await requireLegalAccepted();
+    if (!legalAccepted) {
+      router.replace('/legal-acceptance');
       return;
     }
 
